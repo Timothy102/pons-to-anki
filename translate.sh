@@ -1,5 +1,5 @@
-python3 pons.py -lang "German"
 python3 pons.py -lang "English"
+python3 pons.py -lang "German"
 
 rm nove_angleške_besede.txt
 touch nove_angleške_besede.txt

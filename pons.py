@@ -5,7 +5,7 @@ import urllib.request
 
 import argparse
 from logging import getLogger
-from deep_translator import PonsTranslator
+from deep_translator import GoogleTranslator
 from deep_translator.exceptions import RequestError
 from custom import deutsch_file, english_file, eInput, dInput, ANKI_PORT
 
@@ -13,6 +13,7 @@ logger = getLogger("main")
 translated_words = list()
 not_translated_words = list()
 duplicated_words = list()
+translations_display_list = list()
 
 
 class WordNotFoundException(Exception):
@@ -61,9 +62,9 @@ def performTranslation(word, language='english'):
     Returns:
         _type_ -- The translated word
     """
-    pons = PonsTranslator(source=language, target='slovenian')
+    pons = GoogleTranslator(source=language, target='slovenian')
     try:
-        return pons.translate(word, return_all=True)
+        return pons.translate(word)
     except RequestError:
         pass
 
@@ -84,15 +85,22 @@ def parseArguments():
 def concatenateListIntoString(s):
     t = ""
     for k in s:
-        k = k[:len(k)-1]
         t += f"{k}, "
-    return t[:len(t)-2]
+    return t.rstrip(", ")
 
+def display_translations():
+    t = ""
+    for k in range(len(translations_display_list)):
+        if k == 0:
+            t += f"\n{translations_display_list[k]}"
+        else: t += translations_display_list[k]
+    print(f"🍒 Please find the expected translations below :)\n{t}") if len(translations_display_list) != 0 else ""
 
 def get_words(file=eInput):
     l = []
     with open(file, 'r') as f:
         for row in f:
+            row = row.rstrip("\n")
             l.append(row)
     return l
 
@@ -139,14 +147,14 @@ def invokeAnkiAPI(action, **params):
         pass
     return response, duplicated
 
-def build_the_report(lang = 'german'):
+def build_the_report(lang = 'German'):
     """
     Building up the Translation Report
 
     Keyword Arguments:
         lang {str} -- Language to translate from (default: {'english'})
     """
-    input_file = dInput if lang == 'german' else eInput
+    input_file = eInput if lang == 'English' else eInput
     with open(input_file, 'r') as file:
         words_to_be_translated = len(file.readlines())
 
@@ -154,20 +162,21 @@ def build_the_report(lang = 'german'):
 
     print(f"📚  Building Up the Translation Report on Day: '{date.today()}'. \n\n🏟️  We seek to translate {words_to_be_translated} {words_word} into '{lang}'.\n")
     if translated_words:
-        print(f"✅ Successfully Translated the Following Words:\n {concatenateListIntoString(translated_words)}. \n")
+        print(f"✅ Successfully Translated the Following Words:\n {concatenateListIntoString(translated_words)}\n")
     if not_translated_words:
         print(
-            f"❌ Could not translate the following words:\n {concatenateListIntoString(not_translated_words)}. \n")
+            f"❌ Could not translate the following words:\n {concatenateListIntoString(not_translated_words)}\n")
     if duplicated_words:
         print(
-            f"🫶  Certain Duplications seem to have been found:\n {concatenateListIntoString(duplicated_words)}.\n")
+            f"🫶  Certain Duplications seem to have been found:\n {concatenateListIntoString(duplicated_words)}\n")
 
+    display_translations()
 
 def main():
     args = parseArguments()
     if args.lang == 'German':
         input_file, file = dInput, deutsch_file
-        deck_name = "nemščina"
+        deck_name = "german"
         language = "de"
     else:
         input_file, file = eInput, english_file
@@ -179,16 +188,15 @@ def main():
         try:
             translated = performTranslation(
                 word, language=language)
-            
-            if translated:
-                printed_word = concatenateListIntoString(translated)
-            else:
+                        
+            if not translated:
                 logger.info(f"The word: '{word}' could not be translated :(")
                 not_translated_words.append(word)
-                printed_word = ""
                 pass
+
+            # Store into Corpus
             with open(file, 'a') as f:
-                printed_word = word.strip() + " -- " + printed_word.strip() + "\n"
+                printed_word = word.strip() + " -- " + translated + "\n"
                 f.write(printed_word) if printed_word is not None else logger.info(
                     f"The word: '{word}' could not be translated :(")
 
@@ -198,20 +206,23 @@ def main():
 
         note = {
             "deckName": deck_name,
-            "modelName": "Basic",
+            "modelName": "Basic-fbf65",
             "fields": {
                 "Front": word.strip(),
                 "Back": printed_word.strip()
             }
         }
+        translations_display_list.append(printed_word)
+
         try:
             _, duplicated = invokeAnkiAPI('addNote', note=note) 
             duplicated_words.append(word) if duplicated else translated_words.append(word)
         except CannotPatchIntoAnkiException as exc:
             logger.info(f"Cannot connect to Anki on port: '{ANKI_PORT}'.")
             pass
-    build_the_report(lang=args.lang)
 
+    # Build the Report in CMD
+    build_the_report(lang=args.lang)    
 
 if __name__ == "__main__":
     main()
